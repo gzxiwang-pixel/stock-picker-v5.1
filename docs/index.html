@@ -1,0 +1,1655 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>鸭口选股 V4</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+                 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+    background: #080c1a;
+    color: #dde3ff;
+    min-height: 100vh;
+    padding-bottom: env(safe-area-inset-bottom);
+}
+.header {
+    background: linear-gradient(135deg, #131836 0%, #0a0f28 100%);
+    padding: 18px 16px 14px;
+    border-bottom: 1px solid rgba(90, 120, 255, 0.18);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    backdrop-filter: blur(20px);
+}
+.header h1 {
+    font-size: 21px;
+    font-weight: 800;
+    background: linear-gradient(90deg, #7ba4ff, #c084fc, #f472b6);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: 1.5px;
+}
+.header .meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 7px;
+    font-size: 12px;
+    color: #6870a0;
+}
+.header .count {
+    background: rgba(90,120,255,0.15);
+    color: #8fa4ff;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-weight: 700;
+}
+.tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-top: 9px;
+}
+.tag {
+    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: 5px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+}
+.tag-v4    { background: rgba(255,100,100,0.18); color: #ff7070; border: 1px solid rgba(255,100,100,0.35); }
+.tag-boll  { background: rgba(100,150,255,0.12); color: #7ba4ff; }
+.tag-macd  { background: rgba(52,211,153,0.10);  color: #34d399; }
+.tag-obv   { background: rgba(251,191,36,0.10);  color: #fbbf24; }
+.tag-dma   { background: rgba(244,114,182,0.10); color: #f472b6; }
+.tag-amo   { background: rgba(34,211,238,0.10);  color: #22d3ee; }
+.tag-kdj   { background: rgba(167,139,250,0.12); color: #a78bfa; }
+.strategy-desc {
+    background: rgba(90,120,255,0.05);
+    border: 1px solid rgba(90,120,255,0.12);
+    border-radius: 10px;
+    padding: 11px 13px;
+    margin: 10px 12px 4px;
+    font-size: 11px;
+    color: #6870a0;
+    line-height: 1.85;
+}
+.strategy-desc strong { color: #a0b0ff; }
+.strategy-desc .v4-highlight { color: #ff8080; font-weight: 700; }
+.disclaimer {
+    background: rgba(234,179,8,0.06);
+    border: 1px solid rgba(234,179,8,0.14);
+    border-radius: 10px;
+    padding: 10px 13px;
+    margin: 4px 12px 4px;
+    font-size: 11px;
+    color: #a89040;
+    line-height: 1.5;
+}
+.stock-list { padding: 10px 12px; }
+.stock-card {
+    background: linear-gradient(135deg, rgba(20,26,60,0.85) 0%, rgba(10,14,36,0.92) 100%);
+    border: 1px solid rgba(90,120,255,0.10);
+    border-radius: 14px;
+    padding: 14px;
+    margin-bottom: 10px;
+    position: relative;
+    overflow: hidden;
+    transition: transform 0.15s;
+}
+.stock-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, rgba(255,120,120,0.5), transparent);
+}
+.stock-card:active { transform: scale(0.985); }
+.card-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+.stock-name { font-size: 17px; font-weight: 700; color: #e6eaff; }
+.stock-code {
+    font-size: 12px;
+    color: #525880;
+    margin-top: 2px;
+    font-family: 'SF Mono','Fira Code',monospace;
+}
+.stock-price { text-align: right; }
+.price-value {
+    font-size: 22px;
+    font-weight: 700;
+    font-family: 'SF Mono','DIN Alternate',monospace;
+}
+.price-change { font-size: 13px; font-weight: 600; margin-top: 1px; }
+.up   { color: #f43f5e; }
+.down { color: #10b981; }
+.flat { color: #6870a0; }
+.card-bottom {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin-top: 12px;
+    padding-top: 11px;
+    border-top: 1px solid rgba(90,120,255,0.07);
+}
+.metric { text-align: center; }
+.metric-label { font-size: 10px; color: #525880; letter-spacing: 0.4px; }
+.metric-value {
+    font-size: 13px;
+    color: #a0aacc;
+    margin-top: 2px;
+    font-family: 'SF Mono',monospace;
+}
+.signal-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 10px;
+    padding-top: 9px;
+    border-top: 1px solid rgba(90,120,255,0.07);
+}
+.sig {
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-family: 'SF Mono',monospace;
+    white-space: nowrap;
+}
+.sig-v4   { background: rgba(255,100,100,0.15); color: #ff8080; border: 1px solid rgba(255,100,100,0.25); }
+.sig-boll { background: rgba(100,150,255,0.1); color: #7ba4ff; }
+.sig-macd { background: rgba(52,211,153,0.1);  color: #34d399; }
+.sig-obv  { background: rgba(251,191,36,0.1);  color: #fbbf24; }
+.sig-dma  { background: rgba(244,114,182,0.1); color: #f472b6; }
+.sig-amo  { background: rgba(34,211,238,0.1);  color: #22d3ee; }
+.sig-kdj  { background: rgba(167,139,250,0.1); color: #a78bfa; }
+.empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: #525880;
+}
+.empty-state .icon { font-size: 48px; margin-bottom: 16px; }
+.empty-state p { font-size: 14px; line-height: 1.7; }
+.footer {
+    text-align: center;
+    padding: 18px;
+    font-size: 11px;
+    color: #363b5a;
+    border-top: 1px solid rgba(90,120,255,0.06);
+    margin-top: 8px;
+}
+</style>
+</head>
+<body>
+<div class="header">
+    <h1>鸭口选股 V4</h1>
+    <div class="meta">
+        <span>2026年04月18日 18:14 更新</span>
+        <span class="count">31 只</span>
+    </div>
+    <div class="tags">
+        <span class="tag tag-v4">★ 当前三周期鸭口</span>
+        <span class="tag tag-boll">BOLL 月/周/日</span>
+        <span class="tag tag-macd">MACD 月/周/日</span>
+        <span class="tag tag-obv">OBV 月/周/日</span>
+        <span class="tag tag-dma">DMA 月/周</span>
+        <span class="tag tag-amo">AMO 周52&amp;26 日22</span>
+        <span class="tag tag-kdj">KDJ 月/周/日</span>
+    </div>
+</div>
+
+<div class="strategy-desc">
+    <strong>策略逻辑（V4）：</strong>
+    <span class="v4-highlight">【新增】当前日线/周线/月线同时处于 BOLL 鸭口扩张状态</span>
+    + 六大指标全部通过。
+    BOLL月/周/日开口扩张；MACD月/周/日金叉持续；OBV月/周/日均在均线上方；
+    DMA月/周 DIF&gt;DIFMA；AMO周52周≥3倍&amp;26周≥1.5倍且日22日≥1.5倍；
+    KDJ月/周/日 J穿K穿D三线金叉。
+</div>
+
+<div class="disclaimer">
+    本页面仅为量化策略筛选结果展示，不构成任何投资建议。股市有风险，投资需谨慎。
+</div>
+
+<div class="stock-list">
+
+
+<div class="stock-card">
+    <div class="card-top">
+        <div>
+            <div class="stock-name">TCL通讯</div>
+            <div class="stock-code">000542</div>
+        </div>
+        <div class="stock-price">
+            
+            <div class="price-value flat">
+                27.34
+            </div>
+            <div class="price-change flat">
+                0.00%
+            </div>
+            
+        </div>
+    </div>
+    
+    <div class="card-bottom">
+        <div class="metric">
+            <div class="metric-label">开盘</div>
+            <div class="metric-value">0.00</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最高</div>
+            <div class="metric-value">0.00</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最低</div>
+            <div class="metric-value">0.00</div>
+        </div>
+    </div>
+    
+    
+    <div class="signal-row">
+        <span class="sig sig-v4">鸭口NOW 月✓ 周✓ 日✓</span>
+        <span class="sig sig-boll">BOLL 月✓ 周✓ 日✓</span>
+        <span class="sig sig-macd">MACD 月✓ 周✓ 日✓</span>
+        <span class="sig sig-obv">OBV 月✓ 周✓ 日✓</span>
+        <span class="sig sig-dma">DMA 月✓ 周✓</span>
+        <span class="sig sig-amo">AMO ✓</span>
+        <span class="sig sig-kdj">KDJ 月✓ 周✓ 日✓</span>
+    </div>
+    
+</div>
+
+<div class="stock-card">
+    <div class="card-top">
+        <div>
+            <div class="stock-name">盈峰环境</div>
+            <div class="stock-code">000967</div>
+        </div>
+        <div class="stock-price">
+            
+            <div class="price-value up">
+                14.00
+            </div>
+            <div class="price-change up">
+                +7.12%
+            </div>
+            
+        </div>
+    </div>
+    
+    <div class="card-bottom">
+        <div class="metric">
+            <div class="metric-label">开盘</div>
+            <div class="metric-value">14.01</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最高</div>
+            <div class="metric-value">14.30</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最低</div>
+            <div class="metric-value">13.31</div>
+        </div>
+    </div>
+    
+    
+    <div class="signal-row">
+        <span class="sig sig-v4">鸭口NOW 月✓ 周✓ 日✓</span>
+        <span class="sig sig-boll">BOLL 月✓ 周✓ 日✓</span>
+        <span class="sig sig-macd">MACD 月✓ 周✓ 日✓</span>
+        <span class="sig sig-obv">OBV 月✓ 周✓ 日✓</span>
+        <span class="sig sig-dma">DMA 月✓ 周✓</span>
+        <span class="sig sig-amo">AMO ✓</span>
+        <span class="sig sig-kdj">KDJ 月✓ 周✓ 日✓</span>
+    </div>
+    
+</div>
+
+<div class="stock-card">
+    <div class="card-top">
+        <div>
+            <div class="stock-name">新朋股份</div>
+            <div class="stock-code">002328</div>
+        </div>
+        <div class="stock-price">
+            
+            <div class="price-value down">
+                13.00
+            </div>
+            <div class="price-change down">
+                -2.99%
+            </div>
+            
+        </div>
+    </div>
+    
+    <div class="card-bottom">
+        <div class="metric">
+            <div class="metric-label">开盘</div>
+            <div class="metric-value">13.24</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最高</div>
+            <div class="metric-value">13.33</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最低</div>
+            <div class="metric-value">12.65</div>
+        </div>
+    </div>
+    
+    
+    <div class="signal-row">
+        <span class="sig sig-v4">鸭口NOW 月✓ 周✓ 日✓</span>
+        <span class="sig sig-boll">BOLL 月✓ 周✓ 日✓</span>
+        <span class="sig sig-macd">MACD 月✓ 周✓ 日✓</span>
+        <span class="sig sig-obv">OBV 月✓ 周✓ 日✓</span>
+        <span class="sig sig-dma">DMA 月✓ 周✓</span>
+        <span class="sig sig-amo">AMO ✓</span>
+        <span class="sig sig-kdj">KDJ 月✓ 周✓ 日✓</span>
+    </div>
+    
+</div>
+
+<div class="stock-card">
+    <div class="card-top">
+        <div>
+            <div class="stock-name">和胜股份</div>
+            <div class="stock-code">002824</div>
+        </div>
+        <div class="stock-price">
+            
+            <div class="price-value up">
+                30.18
+            </div>
+            <div class="price-change up">
+                +4.86%
+            </div>
+            
+        </div>
+    </div>
+    
+    <div class="card-bottom">
+        <div class="metric">
+            <div class="metric-label">开盘</div>
+            <div class="metric-value">28.00</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最高</div>
+            <div class="metric-value">31.12</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最低</div>
+            <div class="metric-value">27.69</div>
+        </div>
+    </div>
+    
+    
+    <div class="signal-row">
+        <span class="sig sig-v4">鸭口NOW 月✓ 周✓ 日✓</span>
+        <span class="sig sig-boll">BOLL 月✓ 周✓ 日✓</span>
+        <span class="sig sig-macd">MACD 月✓ 周✓ 日✓</span>
+        <span class="sig sig-obv">OBV 月✓ 周✓ 日✓</span>
+        <span class="sig sig-dma">DMA 月✓ 周✓</span>
+        <span class="sig sig-amo">AMO ✓</span>
+        <span class="sig sig-kdj">KDJ 月✓ 周✓ 日✓</span>
+    </div>
+    
+</div>
+
+<div class="stock-card">
+    <div class="card-top">
+        <div>
+            <div class="stock-name">洁美科技</div>
+            <div class="stock-code">002859</div>
+        </div>
+        <div class="stock-price">
+            
+            <div class="price-value up">
+                50.22
+            </div>
+            <div class="price-change up">
+                +8.40%
+            </div>
+            
+        </div>
+    </div>
+    
+    <div class="card-bottom">
+        <div class="metric">
+            <div class="metric-label">开盘</div>
+            <div class="metric-value">48.65</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最高</div>
+            <div class="metric-value">50.90</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最低</div>
+            <div class="metric-value">47.47</div>
+        </div>
+    </div>
+    
+    
+    <div class="signal-row">
+        <span class="sig sig-v4">鸭口NOW 月✓ 周✓ 日✓</span>
+        <span class="sig sig-boll">BOLL 月✓ 周✓ 日✓</span>
+        <span class="sig sig-macd">MACD 月✓ 周✓ 日✓</span>
+        <span class="sig sig-obv">OBV 月✓ 周✓ 日✓</span>
+        <span class="sig sig-dma">DMA 月✓ 周✓</span>
+        <span class="sig sig-amo">AMO ✓</span>
+        <span class="sig sig-kdj">KDJ 月✓ 周✓ 日✓</span>
+    </div>
+    
+</div>
+
+<div class="stock-card">
+    <div class="card-top">
+        <div>
+            <div class="stock-name">传艺科技</div>
+            <div class="stock-code">002866</div>
+        </div>
+        <div class="stock-price">
+            
+            <div class="price-value up">
+                26.39
+            </div>
+            <div class="price-change up">
+                +10.00%
+            </div>
+            
+        </div>
+    </div>
+    
+    <div class="card-bottom">
+        <div class="metric">
+            <div class="metric-label">开盘</div>
+            <div class="metric-value">24.23</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最高</div>
+            <div class="metric-value">26.39</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最低</div>
+            <div class="metric-value">23.80</div>
+        </div>
+    </div>
+    
+    
+    <div class="signal-row">
+        <span class="sig sig-v4">鸭口NOW 月✓ 周✓ 日✓</span>
+        <span class="sig sig-boll">BOLL 月✓ 周✓ 日✓</span>
+        <span class="sig sig-macd">MACD 月✓ 周✓ 日✓</span>
+        <span class="sig sig-obv">OBV 月✓ 周✓ 日✓</span>
+        <span class="sig sig-dma">DMA 月✓ 周✓</span>
+        <span class="sig sig-amo">AMO ✓</span>
+        <span class="sig sig-kdj">KDJ 月✓ 周✓ 日✓</span>
+    </div>
+    
+</div>
+
+<div class="stock-card">
+    <div class="card-top">
+        <div>
+            <div class="stock-name">宇环数控</div>
+            <div class="stock-code">002903</div>
+        </div>
+        <div class="stock-price">
+            
+            <div class="price-value up">
+                32.00
+            </div>
+            <div class="price-change up">
+                +1.81%
+            </div>
+            
+        </div>
+    </div>
+    
+    <div class="card-bottom">
+        <div class="metric">
+            <div class="metric-label">开盘</div>
+            <div class="metric-value">31.10</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最高</div>
+            <div class="metric-value">32.55</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最低</div>
+            <div class="metric-value">30.78</div>
+        </div>
+    </div>
+    
+    
+    <div class="signal-row">
+        <span class="sig sig-v4">鸭口NOW 月✓ 周✓ 日✓</span>
+        <span class="sig sig-boll">BOLL 月✓ 周✓ 日✓</span>
+        <span class="sig sig-macd">MACD 月✓ 周✓ 日✓</span>
+        <span class="sig sig-obv">OBV 月✓ 周✓ 日✓</span>
+        <span class="sig sig-dma">DMA 月✓ 周✓</span>
+        <span class="sig sig-amo">AMO ✓</span>
+        <span class="sig sig-kdj">KDJ 月✓ 周✓ 日✓</span>
+    </div>
+    
+</div>
+
+<div class="stock-card">
+    <div class="card-top">
+        <div>
+            <div class="stock-name">科瑞技术</div>
+            <div class="stock-code">002957</div>
+        </div>
+        <div class="stock-price">
+            
+            <div class="price-value up">
+                45.97
+            </div>
+            <div class="price-change up">
+                +10.00%
+            </div>
+            
+        </div>
+    </div>
+    
+    <div class="card-bottom">
+        <div class="metric">
+            <div class="metric-label">开盘</div>
+            <div class="metric-value">43.00</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最高</div>
+            <div class="metric-value">45.97</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最低</div>
+            <div class="metric-value">42.10</div>
+        </div>
+    </div>
+    
+    
+    <div class="signal-row">
+        <span class="sig sig-v4">鸭口NOW 月✓ 周✓ 日✓</span>
+        <span class="sig sig-boll">BOLL 月✓ 周✓ 日✓</span>
+        <span class="sig sig-macd">MACD 月✓ 周✓ 日✓</span>
+        <span class="sig sig-obv">OBV 月✓ 周✓ 日✓</span>
+        <span class="sig sig-dma">DMA 月✓ 周✓</span>
+        <span class="sig sig-amo">AMO ✓</span>
+        <span class="sig sig-kdj">KDJ 月✓ 周✓ 日✓</span>
+    </div>
+    
+</div>
+
+<div class="stock-card">
+    <div class="card-top">
+        <div>
+            <div class="stock-name">华盛昌</div>
+            <div class="stock-code">002980</div>
+        </div>
+        <div class="stock-price">
+            
+            <div class="price-value up">
+                73.12
+            </div>
+            <div class="price-change up">
+                +10.00%
+            </div>
+            
+        </div>
+    </div>
+    
+    <div class="card-bottom">
+        <div class="metric">
+            <div class="metric-label">开盘</div>
+            <div class="metric-value">66.40</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最高</div>
+            <div class="metric-value">73.12</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最低</div>
+            <div class="metric-value">66.00</div>
+        </div>
+    </div>
+    
+    
+    <div class="signal-row">
+        <span class="sig sig-v4">鸭口NOW 月✓ 周✓ 日✓</span>
+        <span class="sig sig-boll">BOLL 月✓ 周✓ 日✓</span>
+        <span class="sig sig-macd">MACD 月✓ 周✓ 日✓</span>
+        <span class="sig sig-obv">OBV 月✓ 周✓ 日✓</span>
+        <span class="sig sig-dma">DMA 月✓ 周✓</span>
+        <span class="sig sig-amo">AMO ✓</span>
+        <span class="sig sig-kdj">KDJ 月✓ 周✓ 日✓</span>
+    </div>
+    
+</div>
+
+<div class="stock-card">
+    <div class="card-top">
+        <div>
+            <div class="stock-name">智云股份</div>
+            <div class="stock-code">300097</div>
+        </div>
+        <div class="stock-price">
+            
+            <div class="price-value down">
+                10.09
+            </div>
+            <div class="price-change down">
+                -3.90%
+            </div>
+            
+        </div>
+    </div>
+    
+    <div class="card-bottom">
+        <div class="metric">
+            <div class="metric-label">开盘</div>
+            <div class="metric-value">10.32</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最高</div>
+            <div class="metric-value">10.80</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最低</div>
+            <div class="metric-value">9.80</div>
+        </div>
+    </div>
+    
+    
+    <div class="signal-row">
+        <span class="sig sig-v4">鸭口NOW 月✓ 周✓ 日✓</span>
+        <span class="sig sig-boll">BOLL 月✓ 周✓ 日✓</span>
+        <span class="sig sig-macd">MACD 月✓ 周✓ 日✓</span>
+        <span class="sig sig-obv">OBV 月✓ 周✓ 日✓</span>
+        <span class="sig sig-dma">DMA 月✓ 周✓</span>
+        <span class="sig sig-amo">AMO ✓</span>
+        <span class="sig sig-kdj">KDJ 月✓ 周✓ 日✓</span>
+    </div>
+    
+</div>
+
+<div class="stock-card">
+    <div class="card-top">
+        <div>
+            <div class="stock-name">行云科技</div>
+            <div class="stock-code">300209</div>
+        </div>
+        <div class="stock-price">
+            
+            <div class="price-value up">
+                13.69
+            </div>
+            <div class="price-change up">
+                +0.81%
+            </div>
+            
+        </div>
+    </div>
+    
+    <div class="card-bottom">
+        <div class="metric">
+            <div class="metric-label">开盘</div>
+            <div class="metric-value">13.51</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最高</div>
+            <div class="metric-value">14.19</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最低</div>
+            <div class="metric-value">13.40</div>
+        </div>
+    </div>
+    
+    
+    <div class="signal-row">
+        <span class="sig sig-v4">鸭口NOW 月✓ 周✓ 日✓</span>
+        <span class="sig sig-boll">BOLL 月✓ 周✓ 日✓</span>
+        <span class="sig sig-macd">MACD 月✓ 周✓ 日✓</span>
+        <span class="sig sig-obv">OBV 月✓ 周✓ 日✓</span>
+        <span class="sig sig-dma">DMA 月✓ 周✓</span>
+        <span class="sig sig-amo">AMO ✓</span>
+        <span class="sig sig-kdj">KDJ 月✓ 周✓ 日✓</span>
+    </div>
+    
+</div>
+
+<div class="stock-card">
+    <div class="card-top">
+        <div>
+            <div class="stock-name">瑞丰高材</div>
+            <div class="stock-code">300243</div>
+        </div>
+        <div class="stock-price">
+            
+            <div class="price-value up">
+                17.18
+            </div>
+            <div class="price-change up">
+                +8.46%
+            </div>
+            
+        </div>
+    </div>
+    
+    <div class="card-bottom">
+        <div class="metric">
+            <div class="metric-label">开盘</div>
+            <div class="metric-value">15.80</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最高</div>
+            <div class="metric-value">17.70</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最低</div>
+            <div class="metric-value">15.80</div>
+        </div>
+    </div>
+    
+    
+    <div class="signal-row">
+        <span class="sig sig-v4">鸭口NOW 月✓ 周✓ 日✓</span>
+        <span class="sig sig-boll">BOLL 月✓ 周✓ 日✓</span>
+        <span class="sig sig-macd">MACD 月✓ 周✓ 日✓</span>
+        <span class="sig sig-obv">OBV 月✓ 周✓ 日✓</span>
+        <span class="sig sig-dma">DMA 月✓ 周✓</span>
+        <span class="sig sig-amo">AMO ✓</span>
+        <span class="sig sig-kdj">KDJ 月✓ 周✓ 日✓</span>
+    </div>
+    
+</div>
+
+<div class="stock-card">
+    <div class="card-top">
+        <div>
+            <div class="stock-name">华瑞股份</div>
+            <div class="stock-code">300626</div>
+        </div>
+        <div class="stock-price">
+            
+            <div class="price-value up">
+                28.20
+            </div>
+            <div class="price-change up">
+                +7.84%
+            </div>
+            
+        </div>
+    </div>
+    
+    <div class="card-bottom">
+        <div class="metric">
+            <div class="metric-label">开盘</div>
+            <div class="metric-value">26.00</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最高</div>
+            <div class="metric-value">28.38</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最低</div>
+            <div class="metric-value">25.25</div>
+        </div>
+    </div>
+    
+    
+    <div class="signal-row">
+        <span class="sig sig-v4">鸭口NOW 月✓ 周✓ 日✓</span>
+        <span class="sig sig-boll">BOLL 月✓ 周✓ 日✓</span>
+        <span class="sig sig-macd">MACD 月✓ 周✓ 日✓</span>
+        <span class="sig sig-obv">OBV 月✓ 周✓ 日✓</span>
+        <span class="sig sig-dma">DMA 月✓ 周✓</span>
+        <span class="sig sig-amo">AMO ✓</span>
+        <span class="sig sig-kdj">KDJ 月✓ 周✓ 日✓</span>
+    </div>
+    
+</div>
+
+<div class="stock-card">
+    <div class="card-top">
+        <div>
+            <div class="stock-name">科拓生物</div>
+            <div class="stock-code">300858</div>
+        </div>
+        <div class="stock-price">
+            
+            <div class="price-value up">
+                25.45
+            </div>
+            <div class="price-change up">
+                +8.30%
+            </div>
+            
+        </div>
+    </div>
+    
+    <div class="card-bottom">
+        <div class="metric">
+            <div class="metric-label">开盘</div>
+            <div class="metric-value">22.98</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最高</div>
+            <div class="metric-value">27.08</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最低</div>
+            <div class="metric-value">22.98</div>
+        </div>
+    </div>
+    
+    
+    <div class="signal-row">
+        <span class="sig sig-v4">鸭口NOW 月✓ 周✓ 日✓</span>
+        <span class="sig sig-boll">BOLL 月✓ 周✓ 日✓</span>
+        <span class="sig sig-macd">MACD 月✓ 周✓ 日✓</span>
+        <span class="sig sig-obv">OBV 月✓ 周✓ 日✓</span>
+        <span class="sig sig-dma">DMA 月✓ 周✓</span>
+        <span class="sig sig-amo">AMO ✓</span>
+        <span class="sig sig-kdj">KDJ 月✓ 周✓ 日✓</span>
+    </div>
+    
+</div>
+
+<div class="stock-card">
+    <div class="card-top">
+        <div>
+            <div class="stock-name">欧陆通</div>
+            <div class="stock-code">300870</div>
+        </div>
+        <div class="stock-price">
+            
+            <div class="price-value up">
+                358.88
+            </div>
+            <div class="price-change up">
+                +1.24%
+            </div>
+            
+        </div>
+    </div>
+    
+    <div class="card-bottom">
+        <div class="metric">
+            <div class="metric-label">开盘</div>
+            <div class="metric-value">353.56</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最高</div>
+            <div class="metric-value">374.56</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最低</div>
+            <div class="metric-value">347.06</div>
+        </div>
+    </div>
+    
+    
+    <div class="signal-row">
+        <span class="sig sig-v4">鸭口NOW 月✓ 周✓ 日✓</span>
+        <span class="sig sig-boll">BOLL 月✓ 周✓ 日✓</span>
+        <span class="sig sig-macd">MACD 月✓ 周✓ 日✓</span>
+        <span class="sig sig-obv">OBV 月✓ 周✓ 日✓</span>
+        <span class="sig sig-dma">DMA 月✓ 周✓</span>
+        <span class="sig sig-amo">AMO ✓</span>
+        <span class="sig sig-kdj">KDJ 月✓ 周✓ 日✓</span>
+    </div>
+    
+</div>
+
+<div class="stock-card">
+    <div class="card-top">
+        <div>
+            <div class="stock-name">信测标准</div>
+            <div class="stock-code">300938</div>
+        </div>
+        <div class="stock-price">
+            
+            <div class="price-value down">
+                49.24
+            </div>
+            <div class="price-change down">
+                -3.81%
+            </div>
+            
+        </div>
+    </div>
+    
+    <div class="card-bottom">
+        <div class="metric">
+            <div class="metric-label">开盘</div>
+            <div class="metric-value">52.98</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最高</div>
+            <div class="metric-value">54.20</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最低</div>
+            <div class="metric-value">49.10</div>
+        </div>
+    </div>
+    
+    
+    <div class="signal-row">
+        <span class="sig sig-v4">鸭口NOW 月✓ 周✓ 日✓</span>
+        <span class="sig sig-boll">BOLL 月✓ 周✓ 日✓</span>
+        <span class="sig sig-macd">MACD 月✓ 周✓ 日✓</span>
+        <span class="sig sig-obv">OBV 月✓ 周✓ 日✓</span>
+        <span class="sig sig-dma">DMA 月✓ 周✓</span>
+        <span class="sig sig-amo">AMO ✓</span>
+        <span class="sig sig-kdj">KDJ 月✓ 周✓ 日✓</span>
+    </div>
+    
+</div>
+
+<div class="stock-card">
+    <div class="card-top">
+        <div>
+            <div class="stock-name">维科技术</div>
+            <div class="stock-code">600152</div>
+        </div>
+        <div class="stock-price">
+            
+            <div class="price-value up">
+                13.90
+            </div>
+            <div class="price-change up">
+                +9.97%
+            </div>
+            
+        </div>
+    </div>
+    
+    <div class="card-bottom">
+        <div class="metric">
+            <div class="metric-label">开盘</div>
+            <div class="metric-value">12.22</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最高</div>
+            <div class="metric-value">13.90</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最低</div>
+            <div class="metric-value">12.05</div>
+        </div>
+    </div>
+    
+    
+    <div class="signal-row">
+        <span class="sig sig-v4">鸭口NOW 月✓ 周✓ 日✓</span>
+        <span class="sig sig-boll">BOLL 月✓ 周✓ 日✓</span>
+        <span class="sig sig-macd">MACD 月✓ 周✓ 日✓</span>
+        <span class="sig sig-obv">OBV 月✓ 周✓ 日✓</span>
+        <span class="sig sig-dma">DMA 月✓ 周✓</span>
+        <span class="sig sig-amo">AMO ✓</span>
+        <span class="sig sig-kdj">KDJ 月✓ 周✓ 日✓</span>
+    </div>
+    
+</div>
+
+<div class="stock-card">
+    <div class="card-top">
+        <div>
+            <div class="stock-name">科新发展</div>
+            <div class="stock-code">600234</div>
+        </div>
+        <div class="stock-price">
+            
+            <div class="price-value up">
+                19.92
+            </div>
+            <div class="price-change up">
+                +9.99%
+            </div>
+            
+        </div>
+    </div>
+    
+    <div class="card-bottom">
+        <div class="metric">
+            <div class="metric-label">开盘</div>
+            <div class="metric-value">17.93</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最高</div>
+            <div class="metric-value">19.92</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最低</div>
+            <div class="metric-value">17.82</div>
+        </div>
+    </div>
+    
+    
+    <div class="signal-row">
+        <span class="sig sig-v4">鸭口NOW 月✓ 周✓ 日✓</span>
+        <span class="sig sig-boll">BOLL 月✓ 周✓ 日✓</span>
+        <span class="sig sig-macd">MACD 月✓ 周✓ 日✓</span>
+        <span class="sig sig-obv">OBV 月✓ 周✓ 日✓</span>
+        <span class="sig sig-dma">DMA 月✓ 周✓</span>
+        <span class="sig sig-amo">AMO ✓</span>
+        <span class="sig sig-kdj">KDJ 月✓ 周✓ 日✓</span>
+    </div>
+    
+</div>
+
+<div class="stock-card">
+    <div class="card-top">
+        <div>
+            <div class="stock-name">雪天盐业</div>
+            <div class="stock-code">600929</div>
+        </div>
+        <div class="stock-price">
+            
+            <div class="price-value up">
+                7.03
+            </div>
+            <div class="price-change up">
+                +1.88%
+            </div>
+            
+        </div>
+    </div>
+    
+    <div class="card-bottom">
+        <div class="metric">
+            <div class="metric-label">开盘</div>
+            <div class="metric-value">6.82</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最高</div>
+            <div class="metric-value">7.15</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最低</div>
+            <div class="metric-value">6.77</div>
+        </div>
+    </div>
+    
+    
+    <div class="signal-row">
+        <span class="sig sig-v4">鸭口NOW 月✓ 周✓ 日✓</span>
+        <span class="sig sig-boll">BOLL 月✓ 周✓ 日✓</span>
+        <span class="sig sig-macd">MACD 月✓ 周✓ 日✓</span>
+        <span class="sig sig-obv">OBV 月✓ 周✓ 日✓</span>
+        <span class="sig sig-dma">DMA 月✓ 周✓</span>
+        <span class="sig sig-amo">AMO ✓</span>
+        <span class="sig sig-kdj">KDJ 月✓ 周✓ 日✓</span>
+    </div>
+    
+</div>
+
+<div class="stock-card">
+    <div class="card-top">
+        <div>
+            <div class="stock-name">晶科科技</div>
+            <div class="stock-code">601778</div>
+        </div>
+        <div class="stock-price">
+            
+            <div class="price-value up">
+                6.91
+            </div>
+            <div class="price-change up">
+                +3.75%
+            </div>
+            
+        </div>
+    </div>
+    
+    <div class="card-bottom">
+        <div class="metric">
+            <div class="metric-label">开盘</div>
+            <div class="metric-value">7.00</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最高</div>
+            <div class="metric-value">7.33</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最低</div>
+            <div class="metric-value">6.86</div>
+        </div>
+    </div>
+    
+    
+    <div class="signal-row">
+        <span class="sig sig-v4">鸭口NOW 月✓ 周✓ 日✓</span>
+        <span class="sig sig-boll">BOLL 月✓ 周✓ 日✓</span>
+        <span class="sig sig-macd">MACD 月✓ 周✓ 日✓</span>
+        <span class="sig sig-obv">OBV 月✓ 周✓ 日✓</span>
+        <span class="sig sig-dma">DMA 月✓ 周✓</span>
+        <span class="sig sig-amo">AMO ✓</span>
+        <span class="sig sig-kdj">KDJ 月✓ 周✓ 日✓</span>
+    </div>
+    
+</div>
+
+<div class="stock-card">
+    <div class="card-top">
+        <div>
+            <div class="stock-name">宏昌电子</div>
+            <div class="stock-code">603002</div>
+        </div>
+        <div class="stock-price">
+            
+            <div class="price-value up">
+                12.94
+            </div>
+            <div class="price-change up">
+                +0.39%
+            </div>
+            
+        </div>
+    </div>
+    
+    <div class="card-bottom">
+        <div class="metric">
+            <div class="metric-label">开盘</div>
+            <div class="metric-value">12.94</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最高</div>
+            <div class="metric-value">13.28</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最低</div>
+            <div class="metric-value">12.86</div>
+        </div>
+    </div>
+    
+    
+    <div class="signal-row">
+        <span class="sig sig-v4">鸭口NOW 月✓ 周✓ 日✓</span>
+        <span class="sig sig-boll">BOLL 月✓ 周✓ 日✓</span>
+        <span class="sig sig-macd">MACD 月✓ 周✓ 日✓</span>
+        <span class="sig sig-obv">OBV 月✓ 周✓ 日✓</span>
+        <span class="sig sig-dma">DMA 月✓ 周✓</span>
+        <span class="sig sig-amo">AMO ✓</span>
+        <span class="sig sig-kdj">KDJ 月✓ 周✓ 日✓</span>
+    </div>
+    
+</div>
+
+<div class="stock-card">
+    <div class="card-top">
+        <div>
+            <div class="stock-name">宏和科技</div>
+            <div class="stock-code">603256</div>
+        </div>
+        <div class="stock-price">
+            
+            <div class="price-value up">
+                105.30
+            </div>
+            <div class="price-change up">
+                +3.74%
+            </div>
+            
+        </div>
+    </div>
+    
+    <div class="card-bottom">
+        <div class="metric">
+            <div class="metric-label">开盘</div>
+            <div class="metric-value">97.69</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最高</div>
+            <div class="metric-value">109.57</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最低</div>
+            <div class="metric-value">97.69</div>
+        </div>
+    </div>
+    
+    
+    <div class="signal-row">
+        <span class="sig sig-v4">鸭口NOW 月✓ 周✓ 日✓</span>
+        <span class="sig sig-boll">BOLL 月✓ 周✓ 日✓</span>
+        <span class="sig sig-macd">MACD 月✓ 周✓ 日✓</span>
+        <span class="sig sig-obv">OBV 月✓ 周✓ 日✓</span>
+        <span class="sig sig-dma">DMA 月✓ 周✓</span>
+        <span class="sig sig-amo">AMO ✓</span>
+        <span class="sig sig-kdj">KDJ 月✓ 周✓ 日✓</span>
+    </div>
+    
+</div>
+
+<div class="stock-card">
+    <div class="card-top">
+        <div>
+            <div class="stock-name">利通电子</div>
+            <div class="stock-code">603629</div>
+        </div>
+        <div class="stock-price">
+            
+            <div class="price-value up">
+                105.44
+            </div>
+            <div class="price-change up">
+                +10.01%
+            </div>
+            
+        </div>
+    </div>
+    
+    <div class="card-bottom">
+        <div class="metric">
+            <div class="metric-label">开盘</div>
+            <div class="metric-value">96.61</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最高</div>
+            <div class="metric-value">105.44</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最低</div>
+            <div class="metric-value">96.61</div>
+        </div>
+    </div>
+    
+    
+    <div class="signal-row">
+        <span class="sig sig-v4">鸭口NOW 月✓ 周✓ 日✓</span>
+        <span class="sig sig-boll">BOLL 月✓ 周✓ 日✓</span>
+        <span class="sig sig-macd">MACD 月✓ 周✓ 日✓</span>
+        <span class="sig sig-obv">OBV 月✓ 周✓ 日✓</span>
+        <span class="sig sig-dma">DMA 月✓ 周✓</span>
+        <span class="sig sig-amo">AMO ✓</span>
+        <span class="sig sig-kdj">KDJ 月✓ 周✓ 日✓</span>
+    </div>
+    
+</div>
+
+<div class="stock-card">
+    <div class="card-top">
+        <div>
+            <div class="stock-name">泰晶科技</div>
+            <div class="stock-code">603738</div>
+        </div>
+        <div class="stock-price">
+            
+            <div class="price-value up">
+                30.17
+            </div>
+            <div class="price-change up">
+                +9.99%
+            </div>
+            
+        </div>
+    </div>
+    
+    <div class="card-bottom">
+        <div class="metric">
+            <div class="metric-label">开盘</div>
+            <div class="metric-value">28.11</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最高</div>
+            <div class="metric-value">30.17</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最低</div>
+            <div class="metric-value">27.50</div>
+        </div>
+    </div>
+    
+    
+    <div class="signal-row">
+        <span class="sig sig-v4">鸭口NOW 月✓ 周✓ 日✓</span>
+        <span class="sig sig-boll">BOLL 月✓ 周✓ 日✓</span>
+        <span class="sig sig-macd">MACD 月✓ 周✓ 日✓</span>
+        <span class="sig sig-obv">OBV 月✓ 周✓ 日✓</span>
+        <span class="sig sig-dma">DMA 月✓ 周✓</span>
+        <span class="sig sig-amo">AMO ✓</span>
+        <span class="sig sig-kdj">KDJ 月✓ 周✓ 日✓</span>
+    </div>
+    
+</div>
+
+<div class="stock-card">
+    <div class="card-top">
+        <div>
+            <div class="stock-name">长城科技</div>
+            <div class="stock-code">603897</div>
+        </div>
+        <div class="stock-price">
+            
+            <div class="price-value up">
+                51.67
+            </div>
+            <div class="price-change up">
+                +2.11%
+            </div>
+            
+        </div>
+    </div>
+    
+    <div class="card-bottom">
+        <div class="metric">
+            <div class="metric-label">开盘</div>
+            <div class="metric-value">52.00</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最高</div>
+            <div class="metric-value">52.96</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最低</div>
+            <div class="metric-value">49.50</div>
+        </div>
+    </div>
+    
+    
+    <div class="signal-row">
+        <span class="sig sig-v4">鸭口NOW 月✓ 周✓ 日✓</span>
+        <span class="sig sig-boll">BOLL 月✓ 周✓ 日✓</span>
+        <span class="sig sig-macd">MACD 月✓ 周✓ 日✓</span>
+        <span class="sig sig-obv">OBV 月✓ 周✓ 日✓</span>
+        <span class="sig sig-dma">DMA 月✓ 周✓</span>
+        <span class="sig sig-amo">AMO ✓</span>
+        <span class="sig sig-kdj">KDJ 月✓ 周✓ 日✓</span>
+    </div>
+    
+</div>
+
+<div class="stock-card">
+    <div class="card-top">
+        <div>
+            <div class="stock-name">长源东谷</div>
+            <div class="stock-code">603950</div>
+        </div>
+        <div class="stock-price">
+            
+            <div class="price-value up">
+                65.21
+            </div>
+            <div class="price-change up">
+                +5.77%
+            </div>
+            
+        </div>
+    </div>
+    
+    <div class="card-bottom">
+        <div class="metric">
+            <div class="metric-label">开盘</div>
+            <div class="metric-value">60.21</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最高</div>
+            <div class="metric-value">65.80</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最低</div>
+            <div class="metric-value">60.21</div>
+        </div>
+    </div>
+    
+    
+    <div class="signal-row">
+        <span class="sig sig-v4">鸭口NOW 月✓ 周✓ 日✓</span>
+        <span class="sig sig-boll">BOLL 月✓ 周✓ 日✓</span>
+        <span class="sig sig-macd">MACD 月✓ 周✓ 日✓</span>
+        <span class="sig sig-obv">OBV 月✓ 周✓ 日✓</span>
+        <span class="sig sig-dma">DMA 月✓ 周✓</span>
+        <span class="sig sig-amo">AMO ✓</span>
+        <span class="sig sig-kdj">KDJ 月✓ 周✓ 日✓</span>
+    </div>
+    
+</div>
+
+<div class="stock-card">
+    <div class="card-top">
+        <div>
+            <div class="stock-name">时空科技</div>
+            <div class="stock-code">605178</div>
+        </div>
+        <div class="stock-price">
+            
+            <div class="price-value up">
+                86.85
+            </div>
+            <div class="price-change up">
+                +1.34%
+            </div>
+            
+        </div>
+    </div>
+    
+    <div class="card-bottom">
+        <div class="metric">
+            <div class="metric-label">开盘</div>
+            <div class="metric-value">87.00</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最高</div>
+            <div class="metric-value">89.39</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最低</div>
+            <div class="metric-value">85.01</div>
+        </div>
+    </div>
+    
+    
+    <div class="signal-row">
+        <span class="sig sig-v4">鸭口NOW 月✓ 周✓ 日✓</span>
+        <span class="sig sig-boll">BOLL 月✓ 周✓ 日✓</span>
+        <span class="sig sig-macd">MACD 月✓ 周✓ 日✓</span>
+        <span class="sig sig-obv">OBV 月✓ 周✓ 日✓</span>
+        <span class="sig sig-dma">DMA 月✓ 周✓</span>
+        <span class="sig sig-amo">AMO ✓</span>
+        <span class="sig sig-kdj">KDJ 月✓ 周✓ 日✓</span>
+    </div>
+    
+</div>
+
+<div class="stock-card">
+    <div class="card-top">
+        <div>
+            <div class="stock-name">起帆电缆</div>
+            <div class="stock-code">605222</div>
+        </div>
+        <div class="stock-price">
+            
+            <div class="price-value up">
+                28.40
+            </div>
+            <div class="price-change up">
+                +6.73%
+            </div>
+            
+        </div>
+    </div>
+    
+    <div class="card-bottom">
+        <div class="metric">
+            <div class="metric-label">开盘</div>
+            <div class="metric-value">26.10</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最高</div>
+            <div class="metric-value">28.99</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最低</div>
+            <div class="metric-value">26.10</div>
+        </div>
+    </div>
+    
+    
+    <div class="signal-row">
+        <span class="sig sig-v4">鸭口NOW 月✓ 周✓ 日✓</span>
+        <span class="sig sig-boll">BOLL 月✓ 周✓ 日✓</span>
+        <span class="sig sig-macd">MACD 月✓ 周✓ 日✓</span>
+        <span class="sig sig-obv">OBV 月✓ 周✓ 日✓</span>
+        <span class="sig sig-dma">DMA 月✓ 周✓</span>
+        <span class="sig sig-amo">AMO ✓</span>
+        <span class="sig sig-kdj">KDJ 月✓ 周✓ 日✓</span>
+    </div>
+    
+</div>
+
+<div class="stock-card">
+    <div class="card-top">
+        <div>
+            <div class="stock-name">美迪凯</div>
+            <div class="stock-code">688079</div>
+        </div>
+        <div class="stock-price">
+            
+            <div class="price-value up">
+                16.25
+            </div>
+            <div class="price-change up">
+                +4.43%
+            </div>
+            
+        </div>
+    </div>
+    
+    <div class="card-bottom">
+        <div class="metric">
+            <div class="metric-label">开盘</div>
+            <div class="metric-value">15.50</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最高</div>
+            <div class="metric-value">16.65</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最低</div>
+            <div class="metric-value">15.44</div>
+        </div>
+    </div>
+    
+    
+    <div class="signal-row">
+        <span class="sig sig-v4">鸭口NOW 月✓ 周✓ 日✓</span>
+        <span class="sig sig-boll">BOLL 月✓ 周✓ 日✓</span>
+        <span class="sig sig-macd">MACD 月✓ 周✓ 日✓</span>
+        <span class="sig sig-obv">OBV 月✓ 周✓ 日✓</span>
+        <span class="sig sig-dma">DMA 月✓ 周✓</span>
+        <span class="sig sig-amo">AMO ✓</span>
+        <span class="sig sig-kdj">KDJ 月✓ 周✓ 日✓</span>
+    </div>
+    
+</div>
+
+<div class="stock-card">
+    <div class="card-top">
+        <div>
+            <div class="stock-name">三旺通信</div>
+            <div class="stock-code">688618</div>
+        </div>
+        <div class="stock-price">
+            
+            <div class="price-value up">
+                41.95
+            </div>
+            <div class="price-change up">
+                +1.80%
+            </div>
+            
+        </div>
+    </div>
+    
+    <div class="card-bottom">
+        <div class="metric">
+            <div class="metric-label">开盘</div>
+            <div class="metric-value">40.42</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最高</div>
+            <div class="metric-value">42.35</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最低</div>
+            <div class="metric-value">39.21</div>
+        </div>
+    </div>
+    
+    
+    <div class="signal-row">
+        <span class="sig sig-v4">鸭口NOW 月✓ 周✓ 日✓</span>
+        <span class="sig sig-boll">BOLL 月✓ 周✓ 日✓</span>
+        <span class="sig sig-macd">MACD 月✓ 周✓ 日✓</span>
+        <span class="sig sig-obv">OBV 月✓ 周✓ 日✓</span>
+        <span class="sig sig-dma">DMA 月✓ 周✓</span>
+        <span class="sig sig-amo">AMO ✓</span>
+        <span class="sig sig-kdj">KDJ 月✓ 周✓ 日✓</span>
+    </div>
+    
+</div>
+
+<div class="stock-card">
+    <div class="card-top">
+        <div>
+            <div class="stock-name">菱电电控</div>
+            <div class="stock-code">688667</div>
+        </div>
+        <div class="stock-price">
+            
+            <div class="price-value up">
+                145.22
+            </div>
+            <div class="price-change up">
+                +6.19%
+            </div>
+            
+        </div>
+    </div>
+    
+    <div class="card-bottom">
+        <div class="metric">
+            <div class="metric-label">开盘</div>
+            <div class="metric-value">136.75</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最高</div>
+            <div class="metric-value">149.88</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">最低</div>
+            <div class="metric-value">134.85</div>
+        </div>
+    </div>
+    
+    
+    <div class="signal-row">
+        <span class="sig sig-v4">鸭口NOW 月✓ 周✓ 日✓</span>
+        <span class="sig sig-boll">BOLL 月✓ 周✓ 日✓</span>
+        <span class="sig sig-macd">MACD 月✓ 周✓ 日✓</span>
+        <span class="sig sig-obv">OBV 月✓ 周✓ 日✓</span>
+        <span class="sig sig-dma">DMA 月✓ 周✓</span>
+        <span class="sig sig-amo">AMO ✓</span>
+        <span class="sig sig-kdj">KDJ 月✓ 周✓ 日✓</span>
+    </div>
+    
+</div>
+
+
+</div>
+
+<div class="footer">
+    <p>鸭口选股 V4 · 当前三周期鸭口 + 六大指标 × 三周期 · 数据来源：腾讯财经</p>
+    <p style="margin-top:4px;">每个交易日收盘后自动更新</p>
+</div>
+</body>
+</html>
