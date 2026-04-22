@@ -1,46 +1,18 @@
 """
-鸭口选股策略 V4
+评分制选股策略 V5.1
 ========================
-在 V3 六大指标 × 三周期基础上，新增核心条件：
-  【日线 + 周线 + 月线 当前均处于鸭口形态（BOLL 开口扩张）】
-即要求最新一根 K 线本身就在 BOLL 开口扩张状态，
-而不仅仅是历史某段时间内曾经出现过。
+基于多指标评分系统的选股策略，满分100分，50分以上入选
 
-─────────────────────────────────────────────
-新增条件（V4 专属）：
-  BOLL 当前鸭口（三周期同时满足）
-  日线：当前 UB↑ & MID↑ & LB↓
-  周线：当前 UB↑ & MID↑ & LB↓
-  月线：当前 UB↑ & MID↑ & LB↓
+评分标准：
+1. 均线多头（MA5 > MA20）：+20分
+2. BOLL开口（价格 > BOLL上轨 × 0.95）：+15分
+3. MACD强势（DIF > 0）：+15分
+4. 涨幅条件（2% ≤ 涨幅 ≤ 8%）：+15分
+5. 量能放大（量比 > 1.5）：+10分
+6. 成交活跃（成交额 > 1亿）：+10分
+7. MACD金叉（MACD柱 > 0）：+15分
 
-原有六大指标（V3 全部保留，条件不变）：
-
-一、BOLL（布林带开口扩张）
-    月线：12个月内出现过 UB↑ & BOLL↑ & LB↓
-    周线：26周内出现过   UB↑ & BOLL↑ & LB↓
-    日线：22日内出现过   UB↑ & BOLL↑ & LB↓
-
-二、MACD（DIF金叉且持续在DEA上方）
-    月线：12个月内出现月线DIF↑穿DEA且此后DIF始终>=DEA（零轴上下均可）
-    周线：26周内出现   周线零轴上 DIF↑穿DEA且此后DIF始终>=DEA
-    日线：22日内出现   日线DIF↑穿DEA且此后DIF始终>=DEA
-
-三、OBV
-    月线/周线/日线：OBV > MA(OBV, 20)
-
-四、DMA（月线+周线，不含日线）
-    月线/周线：DMA_DIF > DMA_DIFMA
-    （DMA_DIF = MA(close,10)-MA(close,50), DMA_DIFMA = MA(DIF,10)）
-
-五、AMO放量（成交量条件）
-    52周内任意一周 vol > 前周 3倍
-    26周内任意一周 vol > 前周 1.5倍（两者同时满足）
-    22日内任意一日 vol > 前日 1.5倍
-
-六、KDJ金叉
-    月线：24个月内出现 J↑穿K穿D（J上穿K且K上穿D）
-    周线：26周内出现   J↑穿K穿D
-    日线：22日内出现   J↑穿K穿D
+入选门槛：50分
 """
 
 import numpy as np
@@ -68,6 +40,41 @@ HEADERS = {
 SESSION = requests.Session()
 SESSION.headers.update(HEADERS)
 
+# PushPlus配置
+PUSHPLUS_TOKEN = "38e3c83f6d9447c4b0b9f304be03cc46"
+PUSHPLUS_URL = "http://www.pushplus.plus/send"
+
+
+# ============================================================
+# PushPlus推送功能
+# ============================================================
+
+def send_pushplus(title, content, template='html'):
+    """
+    通过PushPlus发送推送消息
+    :param title: 消息标题
+    :param content: 消息内容
+    :param template: 消息模板类型（html/txt/json等）
+    """
+    try:
+        data = {
+            'token': PUSHPLUS_TOKEN,
+            'title': title,
+            'content': content,
+            'template': template
+        }
+        response = requests.post(PUSHPLUS_URL, json=data, timeout=30)
+        result = response.json()
+        if result.get('code') == 200:
+            print(f"  ✓ PushPlus推送成功")
+            return True
+        else:
+            print(f"  ✗ PushPlus推送失败: {result.get('msg', '未知错误')}")
+            return False
+    except Exception as e:
+        print(f"  ✗ PushPlus推送异常: {str(e)}")
+        return False
+
 
 # ============================================================
 # 数据获取层
@@ -75,7 +82,7 @@ SESSION.headers.update(HEADERS)
 
 def get_all_a_stocks():
     """通过腾讯实时行情批量探测有效A股"""
-    print("[1/4] 获取A股股票列表...")
+    print("[1/5] 获取A股股票列表...")
 
     code_ranges = []
     code_ranges += [f"sz{str(i).zfill(6)}" for i in range(1, 1000)]
@@ -133,6 +140,55 @@ def get_all_a_stocks():
     df = df.drop_duplicates(subset='代码').reset_index(drop=True)
     print(f"  共 {len(df)} 只股票待筛选")
     return df
+
+
+def get_realtime_data(stock_code):
+    """获取股票实时行情数据（用于评分计算）"""
+    if stock_code.startswith(('60', '68')):
+        symbol = f"sh{stock_code}"
+    else:
+        symbol = f"sz{stock_code}"
+    
+    url = f"https://qt.gtimg.cn/q={symbol}"
+    try:
+        resp = SESSION.get(url, timeout=15)
+        text = resp.text.strip()
+        match = re.search(r'"(.+)"', text)
+        if not match:
+            return None
+        parts = match.group(1).split('~')
+        if len(parts) < 40:
+            return None
+        
+        price = float(parts[3])
+        prev_close = float(parts[4])
+        open_price = float(parts[5])
+        volume = float(parts[6])  # 成交量（手）
+        turnover = float(parts[37])  # 成交额（万元）
+        high = float(parts[33])
+        low = float(parts[34])
+        
+        # 计算涨幅
+        change_pct = (price - prev_close) / prev_close * 100 if prev_close > 0 else 0
+        
+        # 计算量比（当前成交量 / 过去5日平均成交量）
+        # 简化处理：使用parts[38]作为量比（如果可用）
+        volume_ratio = float(parts[49]) if len(parts) > 49 and parts[49] else 0
+        
+        return {
+            'code': stock_code,
+            'price': price,
+            'prev_close': prev_close,
+            'open': open_price,
+            'high': high,
+            'low': low,
+            'volume': volume,
+            'turnover': turnover,
+            'change_pct': round(change_pct, 2),
+            'volume_ratio': volume_ratio,
+        }
+    except Exception as e:
+        return None
 
 
 def _fetch_kline(symbol, period, count):
@@ -197,37 +253,6 @@ def get_kline(stock_code, period, count):
     return _fetch_kline(symbol, period, count)
 
 
-def get_daily_display(stock_code):
-    """获取最新实时行情（用于展示）"""
-    if stock_code.startswith(('60', '68')):
-        symbol = f"sh{stock_code}"
-    else:
-        symbol = f"sz{stock_code}"
-    url = f"https://qt.gtimg.cn/q={symbol}"
-    try:
-        resp = SESSION.get(url, timeout=15)
-        text = resp.text.strip()
-        match = re.search(r'"(.+)"', text)
-        if not match:
-            return {}
-        parts = match.group(1).split('~')
-        if len(parts) < 40:
-            return {}
-        price = float(parts[3])
-        prev_close = float(parts[4])
-        change_pct = (price - prev_close) / prev_close * 100 if prev_close > 0 else 0
-        return {
-            'price':      price,
-            'change_pct': round(change_pct, 2),
-            'volume':     float(parts[36]) if parts[36] else 0,
-            'high':       float(parts[33]) if parts[33] else price,
-            'low':        float(parts[34]) if parts[34] else price,
-            'open':       float(parts[5])  if parts[5]  else price,
-        }
-    except Exception:
-        return {}
-
-
 # ============================================================
 # 技术指标计算工具
 # ============================================================
@@ -241,267 +266,103 @@ def ma(series, n):
 def std_dev(series, n):
     return series.rolling(window=n, min_periods=n).std(ddof=0)
 
-def ref(series, n):
-    return series.shift(n)
-
-def exist(cond_series, n):
-    """最近 n 个周期内是否出现过 True"""
-    return cond_series.rolling(window=n, min_periods=1).max().astype(bool)
-
-def cross_up(s1, s2):
-    """s1 上穿 s2（金叉）"""
-    return (s1 > s2) & (ref(s1, 1) <= ref(s2, 1))
-
 
 # ============================================================
-# 各指标计算函数
+# 评分策略计算
 # ============================================================
 
-def calc_boll(df, period=20):
+def calculate_score(stock_code, realtime_data):
     """
-    返回：boll_cond（Series[bool]）
-    条件：UB上升 & MID上升 & LB下降（鸭口扩张）
+    计算股票评分（满分100分）
+    返回：(总分, 详细得分字典) 或 (0, None)
     """
-    close = df['close']
-    mid   = ma(close, period)
-    upper = mid + 2 * std_dev(close, period)
-    lower = mid - 2 * std_dev(close, period)
-    cond  = (upper > ref(upper, 1)) & (mid > ref(mid, 1)) & (lower < ref(lower, 1))
-    return cond
-
-
-def calc_boll_current(df, period=20):
-    """
-    【V4 新增】判断当前（最新一根K线）是否处于鸭口形态
-    返回 bool：当前 UB↑ & MID↑ & LB↓
-    """
-    cond = calc_boll(df, period)
-    if cond.empty:
-        return False
-    return bool(cond.iloc[-1])
-
-
-def calc_macd(df, with_zero_filter=False):
-    """
-    返回：macd_cross_hold（Series[bool]）
-    金叉后 DIF 始终 >= DEA
-    with_zero_filter=True 时，要求金叉发生时 DEA > 0（零轴上方）
-    """
-    close = df['close']
-    dif   = ema(close, 12) - ema(close, 26)
-    dea   = ema(dif, 9)
-
-    jc = cross_up(dif, dea)
-    if with_zero_filter:
-        jc = jc & (dea > 0)
-
-    dif_above = (dif >= dea).astype(float)
-
-    result = pd.Series(False, index=df.index)
-    jc_idx = df.index[jc]
-    for idx in jc_idx:
-        subsequent = dif_above.loc[idx:]
-        if subsequent.min() >= 1.0:
-            result.loc[idx:] = True
-    return result
-
-
-def calc_obv(df, ma_period=20):
-    """OBV > MA(OBV, ma_period)"""
-    close = df['close']
-    vol   = df['vol']
-    direction = np.sign(close.diff().fillna(0))
-    obv   = (direction * vol).cumsum()
-    maobv = ma(obv, ma_period)
-    return obv > maobv
-
-
-def calc_dma(df):
-    """
-    DMA 指标：DIF_DMA > DIFMA
-    DIF_DMA = MA(close,10) - MA(close,50)
-    DIFMA   = MA(DIF_DMA, 10)
-    """
-    close   = df['close']
-    dif_dma = ma(close, 10) - ma(close, 50)
-    difma   = ma(dif_dma, 10)
-    return dif_dma > difma
-
-
-def calc_amo(df_week, df_daily):
-    """
-    放量条件（三个同时满足）：
-    A: 52周内任意一周 vol > 前周 3倍
-    B: 26周内任意一周 vol > 前周 1.5倍
-    C: 22日内任意一日 vol > 前日 1.5倍
-    """
-    wvol  = df_week['vol']
-    ratio_w = wvol / ref(wvol, 1)
-    cond_a = exist(ratio_w > 3,   52)
-    cond_b = exist(ratio_w > 1.5, 26)
-
-    dvol  = df_daily['vol']
-    ratio_d = dvol / ref(dvol, 1)
-    cond_c = exist(ratio_d > 1.5, 22)
-
-    a = bool(cond_a.iloc[-1]) if not cond_a.empty else False
-    b = bool(cond_b.iloc[-1]) if not cond_b.empty else False
-    c = bool(cond_c.iloc[-1]) if not cond_c.empty else False
-    return a and b and c
-
-
-def calc_kdj(df, n=9, m1=3, m2=3):
-    """
-    KDJ 计算（经典随机指标）
-    金叉条件：J 上穿 K 且 K 上穿 D（同一根K线发生）
-    """
-    high  = df['high']
-    low   = df['low']
-    close = df['close']
-
-    low_n  = low.rolling(window=n, min_periods=1).min()
-    high_n = high.rolling(window=n, min_periods=1).max()
-
-    rsv = (close - low_n) / (high_n - low_n + 1e-9) * 100
-    rsv = rsv.clip(0, 100)
-
-    k = pd.Series(50.0, index=df.index)
-    d = pd.Series(50.0, index=df.index)
-    for i in range(1, len(df)):
-        k.iloc[i] = k.iloc[i-1] * (1 - 1/m1) + rsv.iloc[i] * (1/m1)
-        d.iloc[i] = d.iloc[i-1] * (1 - 1/m2) + k.iloc[i] * (1/m2)
-
-    j = 3 * k - 2 * d
-
-    jk_cross = cross_up(j, k)
-    kd_cross = cross_up(k, d)
-    kdj_cross = jk_cross & kd_cross
-    return kdj_cross
-
-
-# ============================================================
-# 主策略：六大指标 + V4 新增当前三周期鸭口
-# ============================================================
-
-def apply_strategy(df_month, df_week, df_day):
-    """
-    传入月线、周线、日线 DataFrame（均含 date/open/close/high/low/vol）
-    返回 True/False —— 当前是否满足所有条件
-
-    V4 在 V3 基础上新增：
-      当前日线、周线、月线同时处于鸭口形态（BOLL 开口扩张）
-    """
-
-    # ── 【V4 新增】当前三周期鸭口（强过滤条件）──────────────────
-    # 要求当前最新一根K线，日/周/月线均处于 BOLL 开口扩张（鸭口）状态
-    boll_cur_d = calc_boll_current(df_day)
-    boll_cur_w = calc_boll_current(df_week)
-    boll_cur_m = calc_boll_current(df_month)
-    boll_current_ok = boll_cur_d and boll_cur_w and boll_cur_m
-
-    # 快速剪枝：当前三周期鸭口不满足直接返回 False
-    if not boll_current_ok:
-        return False
-
-    # ── 一、BOLL（历史窗口内出现过）──────────────────────────────
-    boll_m = exist(calc_boll(df_month), 12).iloc[-1]
-    boll_w = exist(calc_boll(df_week),  26).iloc[-1]
-    boll_d = exist(calc_boll(df_day),   22).iloc[-1]
-    boll_ok = bool(boll_m) and bool(boll_w) and bool(boll_d)
-
-    # ── 二、MACD ─────────────────────────────────────────────────
-    macd_m_series = calc_macd(df_month, with_zero_filter=False)
-    macd_m = bool(exist(macd_m_series, 12).iloc[-1])
-
-    macd_w_series = calc_macd(df_week, with_zero_filter=True)
-    macd_w = bool(exist(macd_w_series, 26).iloc[-1])
-
-    macd_d_series = calc_macd(df_day, with_zero_filter=False)
-    macd_d = bool(exist(macd_d_series, 22).iloc[-1])
-
-    macd_ok = macd_m and macd_w and macd_d
-
-    # ── 三、OBV ──────────────────────────────────────────────────
-    obv_m = bool(calc_obv(df_month).iloc[-1])
-    obv_w = bool(calc_obv(df_week).iloc[-1])
-    obv_d = bool(calc_obv(df_day).iloc[-1])
-    obv_ok = obv_m and obv_w and obv_d
-
-    # ── 四、DMA（仅月线+周线）────────────────────────────────────
-    dma_m = bool(calc_dma(df_month).iloc[-1])
-    dma_w = bool(calc_dma(df_week).iloc[-1])
-    dma_ok = dma_m and dma_w
-
-    # ── 五、AMO放量 ───────────────────────────────────────────────
-    amo_ok = calc_amo(df_week, df_day)
-
-    # ── 六、KDJ金叉 ──────────────────────────────────────────────
-    kdj_m = bool(exist(calc_kdj(df_month), 24).iloc[-1])
-    kdj_w = bool(exist(calc_kdj(df_week),  26).iloc[-1])
-    kdj_d = bool(exist(calc_kdj(df_day),   22).iloc[-1])
-    kdj_ok = kdj_m and kdj_w and kdj_d
-
-    return boll_ok and macd_ok and obv_ok and dma_ok and amo_ok and kdj_ok
-
-
-def apply_strategy_detail(df_month, df_week, df_day):
-    """
-    返回各子条件详情字典，用于调试/展示
-    包含 V4 新增的"当前鸭口"条件
-    """
-    # V4 新增：当前鸭口
-    boll_cur_d = calc_boll_current(df_day)
-    boll_cur_w = calc_boll_current(df_week)
-    boll_cur_m = calc_boll_current(df_month)
-
-    boll_m = bool(exist(calc_boll(df_month), 12).iloc[-1])
-    boll_w = bool(exist(calc_boll(df_week),  26).iloc[-1])
-    boll_d = bool(exist(calc_boll(df_day),   22).iloc[-1])
-
-    macd_m = bool(exist(calc_macd(df_month, False), 12).iloc[-1])
-    macd_w = bool(exist(calc_macd(df_week,  True),  26).iloc[-1])
-    macd_d = bool(exist(calc_macd(df_day,   False), 22).iloc[-1])
-
-    obv_m  = bool(calc_obv(df_month).iloc[-1])
-    obv_w  = bool(calc_obv(df_week).iloc[-1])
-    obv_d  = bool(calc_obv(df_day).iloc[-1])
-
-    dma_m  = bool(calc_dma(df_month).iloc[-1])
-    dma_w  = bool(calc_dma(df_week).iloc[-1])
-
-    amo    = calc_amo(df_week, df_day)
-
-    kdj_m  = bool(exist(calc_kdj(df_month), 24).iloc[-1])
-    kdj_w  = bool(exist(calc_kdj(df_week),  26).iloc[-1])
-    kdj_d  = bool(exist(calc_kdj(df_day),   22).iloc[-1])
-
-    return {
-        'BOLL_NOW': f"月{'✓' if boll_cur_m else '✗'} 周{'✓' if boll_cur_w else '✗'} 日{'✓' if boll_cur_d else '✗'}",
-        'BOLL':     f"月{'✓' if boll_m else '✗'} 周{'✓' if boll_w else '✗'} 日{'✓' if boll_d else '✗'}",
-        'MACD':     f"月{'✓' if macd_m else '✗'} 周{'✓' if macd_w else '✗'} 日{'✓' if macd_d else '✗'}",
-        'OBV':      f"月{'✓' if obv_m  else '✗'} 周{'✓' if obv_w  else '✗'} 日{'✓' if obv_d  else '✗'}",
-        'DMA':      f"月{'✓' if dma_m  else '✗'} 周{'✓' if dma_w  else '✗'}",
-        'AMO':      '✓' if amo else '✗',
-        'KDJ':      f"月{'✓' if kdj_m  else '✗'} 周{'✓' if kdj_w  else '✗'} 日{'✓' if kdj_d  else '✗'}",
-    }
+    if not realtime_data:
+        return 0, None
+    
+    score = 0
+    details = {}
+    
+    # 获取日K线数据（用于计算技术指标）
+    df_day = get_kline(stock_code, 'day', 60)
+    if df_day.empty or len(df_day) < 30:
+        return 0, None
+    
+    close = df_day['close']
+    high = df_day['high']
+    low = df_day['low']
+    current_price = realtime_data['price']
+    
+    # 1. 均线多头（MA5 > MA20）：+20分
+    ma5 = ma(close, 5).iloc[-1]
+    ma20 = ma(close, 20).iloc[-1]
+    if pd.notna(ma5) and pd.notna(ma20) and ma5 > ma20:
+        score += 20
+        details['均线多头'] = f"✓ +20分 (MA5:{ma5:.2f} > MA20:{ma20:.2f})"
+    else:
+        details['均线多头'] = f"✗ 0分 (MA5:{ma5:.2f} ≤ MA20:{ma20:.2f})"
+    
+    # 2. BOLL开口（价格 > BOLL上轨 × 0.95）：+15分
+    mid = ma(close, 20).iloc[-1]
+    std = std_dev(close, 20).iloc[-1]
+    upper = mid + 2 * std
+    if pd.notna(upper) and current_price > upper * 0.95:
+        score += 15
+        details['BOLL开口'] = f"✓ +15分 (价格:{current_price:.2f} > 上轨×0.95:{upper*0.95:.2f})"
+    else:
+        details['BOLL开口'] = f"✗ 0分 (价格:{current_price:.2f} ≤ 上轨×0.95:{upper*0.95:.2f})"
+    
+    # 3. MACD强势（DIF > 0）：+15分
+    dif = ema(close, 12) - ema(close, 26)
+    dif_val = dif.iloc[-1]
+    if pd.notna(dif_val) and dif_val > 0:
+        score += 15
+        details['MACD强势'] = f"✓ +15分 (DIF:{dif_val:.4f} > 0)"
+    else:
+        details['MACD强势'] = f"✗ 0分 (DIF:{dif_val:.4f} ≤ 0)"
+    
+    # 4. 涨幅条件（2% ≤ 涨幅 ≤ 8%）：+15分
+    change_pct = realtime_data['change_pct']
+    if 2 <= change_pct <= 8:
+        score += 15
+        details['涨幅条件'] = f"✓ +15分 (涨幅:{change_pct:.2f}%)"
+    else:
+        details['涨幅条件'] = f"✗ 0分 (涨幅:{change_pct:.2f}%)"
+    
+    # 5. 量能放大（量比 > 1.5）：+10分
+    volume_ratio = realtime_data['volume_ratio']
+    if volume_ratio > 1.5:
+        score += 10
+        details['量能放大'] = f"✓ +10分 (量比:{volume_ratio:.2f})"
+    else:
+        details['量能放大'] = f"✗ 0分 (量比:{volume_ratio:.2f})"
+    
+    # 6. 成交活跃（成交额 > 1亿）：+10分
+    turnover_yi = realtime_data['turnover'] / 10000  # 万元转亿元
+    if turnover_yi > 1:
+        score += 10
+        details['成交活跃'] = f"✓ +10分 (成交额:{turnover_yi:.2f}亿)"
+    else:
+        details['成交活跃'] = f"✗ 0分 (成交额:{turnover_yi:.2f}亿)"
+    
+    # 7. MACD金叉（MACD柱 > 0）：+15分
+    dea = ema(dif, 9)
+    macd_bar = (dif - dea).iloc[-1] * 2
+    if pd.notna(macd_bar) and macd_bar > 0:
+        score += 15
+        details['MACD金叉'] = f"✓ +15分 (MACD柱:{macd_bar:.4f})"
+    else:
+        details['MACD金叉'] = f"✗ 0分 (MACD柱:{macd_bar:.4f})"
+    
+    return score, details
 
 
 # ============================================================
 # 主流程
 # ============================================================
 
-MIN_MONTH = 30
-MIN_WEEK  = 60
-MIN_DAY   = 60
-
-FETCH_MONTH = 60
-FETCH_WEEK  = 130
-FETCH_DAY   = 100
-
-
 def run_strategy():
     print("=" * 60)
-    print(f"  鸭口选股 V4 - {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    print(f"  评分制选股 V5.1 - {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     print("=" * 60)
 
     stocks = get_all_a_stocks()
@@ -510,10 +371,10 @@ def run_strategy():
         return []
 
     selected = []
-    total    = len(stocks)
-    failed   = 0
+    total = len(stocks)
+    failed = 0
 
-    print(f"\n[2/4] 逐只计算策略信号（共 {total} 只）...")
+    print(f"\n[2/5] 逐只计算评分（共 {total} 只）...")
     for idx, row in stocks.iterrows():
         code = row['代码']
         name = row['名称']
@@ -521,27 +382,26 @@ def run_strategy():
         if idx % 200 == 0:
             print(f"  进度: {idx}/{total} ({idx/total*100:.1f}%)")
 
-        df_month = get_kline(code, 'month', FETCH_MONTH)
-        df_week  = get_kline(code, 'week',  FETCH_WEEK)
-        df_day   = get_kline(code, 'day',   FETCH_DAY)
-
-        if (df_month.empty or len(df_month) < MIN_MONTH or
-                df_week.empty  or len(df_week)  < MIN_WEEK  or
-                df_day.empty   or len(df_day)   < MIN_DAY):
+        # 获取实时数据
+        realtime = get_realtime_data(code)
+        if not realtime:
             failed += 1
             time.sleep(0.05)
             continue
 
         try:
-            hit = apply_strategy(df_month, df_week, df_day)
-            if hit:
-                detail = apply_strategy_detail(df_month, df_week, df_day)
+            score, details = calculate_score(code, realtime)
+            
+            # 入选门槛：50分
+            if score >= 50:
                 selected.append({
-                    'code':   code,
-                    'name':   name,
-                    'detail': detail,
+                    'code': code,
+                    'name': name,
+                    'score': score,
+                    'details': details,
+                    **realtime
                 })
-                print(f"  ★ 选中: {code} {name}")
+                print(f"  ★ 选中: {code} {name} - 得分: {score}分")
         except Exception as e:
             failed += 1
             time.sleep(0.05)
@@ -550,14 +410,11 @@ def run_strategy():
         time.sleep(0.15)
 
     print(f"\n  策略计算完成: 成功 {total - failed}, 失败 {failed}")
-
-    print(f"\n[3/4] 获取选中股票的最新行情...")
-    for item in selected:
-        daily = get_daily_display(item['code'])
-        item.update(daily)
-        time.sleep(0.1)
-
-    print(f"\n  共选出 {len(selected)} 只股票")
+    print(f"\n[3/5] 共选出 {len(selected)} 只股票（≥50分）")
+    
+    # 按得分降序排序
+    selected.sort(key=lambda x: x['score'], reverse=True)
+    
     return selected
 
 
@@ -566,14 +423,14 @@ def run_strategy():
 # ============================================================
 
 def generate_html(selected_stocks, output_path):
-    print(f"\n[4/4] 生成展示页面...")
+    print(f"\n[4/5] 生成展示页面...")
 
     template_str = r"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>鸭口选股 V4</title>
+<title>评分制选股 V5.1</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
@@ -616,26 +473,6 @@ body {
     border-radius: 12px;
     font-weight: 700;
 }
-.tags {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 5px;
-    margin-top: 9px;
-}
-.tag {
-    font-size: 10px;
-    padding: 3px 8px;
-    border-radius: 5px;
-    font-weight: 600;
-    letter-spacing: 0.3px;
-}
-.tag-v4    { background: rgba(255,100,100,0.18); color: #ff7070; border: 1px solid rgba(255,100,100,0.35); }
-.tag-boll  { background: rgba(100,150,255,0.12); color: #7ba4ff; }
-.tag-macd  { background: rgba(52,211,153,0.10);  color: #34d399; }
-.tag-obv   { background: rgba(251,191,36,0.10);  color: #fbbf24; }
-.tag-dma   { background: rgba(244,114,182,0.10); color: #f472b6; }
-.tag-amo   { background: rgba(34,211,238,0.10);  color: #22d3ee; }
-.tag-kdj   { background: rgba(167,139,250,0.12); color: #a78bfa; }
 .strategy-desc {
     background: rgba(90,120,255,0.05);
     border: 1px solid rgba(90,120,255,0.12);
@@ -647,7 +484,6 @@ body {
     line-height: 1.85;
 }
 .strategy-desc strong { color: #a0b0ff; }
-.strategy-desc .v4-highlight { color: #ff8080; font-weight: 700; }
 .disclaimer {
     background: rgba(234,179,8,0.06);
     border: 1px solid rgba(234,179,8,0.14);
@@ -682,6 +518,7 @@ body {
     justify-content: space-between;
     align-items: flex-start;
 }
+.stock-info { flex: 1; }
 .stock-name { font-size: 17px; font-weight: 700; color: #e6eaff; }
 .stock-code {
     font-size: 12px;
@@ -689,54 +526,50 @@ body {
     margin-top: 2px;
     font-family: 'SF Mono','Fira Code',monospace;
 }
-.stock-price { text-align: right; }
-.price-value {
-    font-size: 22px;
-    font-weight: 700;
-    font-family: 'SF Mono','DIN Alternate',monospace;
+.score-badge {
+    background: linear-gradient(135deg, #f43f5e, #ec4899);
+    color: white;
+    font-size: 24px;
+    font-weight: 800;
+    padding: 8px 16px;
+    border-radius: 10px;
+    text-align: center;
+    min-width: 80px;
 }
-.price-change { font-size: 13px; font-weight: 600; margin-top: 1px; }
-.up   { color: #f43f5e; }
-.down { color: #10b981; }
-.flat { color: #6870a0; }
-.card-bottom {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 8px;
+.score-label {
+    font-size: 10px;
+    opacity: 0.8;
+    margin-top: 2px;
+}
+.stock-price {
+    display: flex;
+    gap: 15px;
     margin-top: 12px;
     padding-top: 11px;
     border-top: 1px solid rgba(90,120,255,0.07);
 }
-.metric { text-align: center; }
-.metric-label { font-size: 10px; color: #525880; letter-spacing: 0.4px; }
-.metric-value {
-    font-size: 13px;
-    color: #a0aacc;
+.price-item { flex: 1; }
+.price-label { font-size: 10px; color: #525880; }
+.price-value {
+    font-size: 15px;
+    font-weight: 600;
     margin-top: 2px;
     font-family: 'SF Mono',monospace;
 }
-.signal-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
+.up   { color: #f43f5e; }
+.down { color: #10b981; }
+.flat { color: #6870a0; }
+.details {
     margin-top: 10px;
     padding-top: 9px;
     border-top: 1px solid rgba(90,120,255,0.07);
 }
-.sig {
-    font-size: 10px;
-    padding: 2px 7px;
-    border-radius: 4px;
+.detail-item {
+    font-size: 11px;
+    padding: 3px 0;
+    color: #8890b0;
     font-family: 'SF Mono',monospace;
-    white-space: nowrap;
 }
-.sig-v4   { background: rgba(255,100,100,0.15); color: #ff8080; border: 1px solid rgba(255,100,100,0.25); }
-.sig-boll { background: rgba(100,150,255,0.1); color: #7ba4ff; }
-.sig-macd { background: rgba(52,211,153,0.1);  color: #34d399; }
-.sig-obv  { background: rgba(251,191,36,0.1);  color: #fbbf24; }
-.sig-dma  { background: rgba(244,114,182,0.1); color: #f472b6; }
-.sig-amo  { background: rgba(34,211,238,0.1);  color: #22d3ee; }
-.sig-kdj  { background: rgba(167,139,250,0.1); color: #a78bfa; }
 .empty-state {
     text-align: center;
     padding: 60px 20px;
@@ -756,29 +589,17 @@ body {
 </head>
 <body>
 <div class="header">
-    <h1>鸭口选股 V4</h1>
+    <h1>评分制选股 V5.1</h1>
     <div class="meta">
         <span>{{ update_time }}</span>
         <span class="count">{{ stock_count }} 只</span>
     </div>
-    <div class="tags">
-        <span class="tag tag-v4">★ 当前三周期鸭口</span>
-        <span class="tag tag-boll">BOLL 月/周/日</span>
-        <span class="tag tag-macd">MACD 月/周/日</span>
-        <span class="tag tag-obv">OBV 月/周/日</span>
-        <span class="tag tag-dma">DMA 月/周</span>
-        <span class="tag tag-amo">AMO 周52&amp;26 日22</span>
-        <span class="tag tag-kdj">KDJ 月/周/日</span>
-    </div>
 </div>
 
 <div class="strategy-desc">
-    <strong>策略逻辑（V4）：</strong>
-    <span class="v4-highlight">【新增】当前日线/周线/月线同时处于 BOLL 鸭口扩张状态</span>
-    + 六大指标全部通过。
-    BOLL月/周/日开口扩张；MACD月/周/日金叉持续；OBV月/周/日均在均线上方；
-    DMA月/周 DIF&gt;DIFMA；AMO周52周≥3倍&amp;26周≥1.5倍且日22日≥1.5倍；
-    KDJ月/周/日 J穿K穿D三线金叉。
+    <strong>评分标准（满分100分，≥50分入选）：</strong><br>
+    均线多头(MA5>MA20)+20 | BOLL开口(价格>上轨×0.95)+15 | MACD强势(DIF>0)+15 | 
+    涨幅适中(2%-8%)+15 | 量能放大(量比>1.5)+10 | 成交活跃(>1亿)+10 | MACD金叉(柱>0)+15
 </div>
 
 <div class="disclaimer">
@@ -790,48 +611,42 @@ body {
 {% for s in stocks %}
 <div class="stock-card">
     <div class="card-top">
-        <div>
+        <div class="stock-info">
             <div class="stock-name">{{ s.name }}</div>
             <div class="stock-code">{{ s.code }}</div>
         </div>
-        <div class="stock-price">
-            {% if s.price %}
+        <div class="score-badge">
+            {{ s.score }}
+            <div class="score-label">分</div>
+        </div>
+    </div>
+    <div class="stock-price">
+        <div class="price-item">
+            <div class="price-label">现价</div>
             <div class="price-value {% if s.change_pct > 0 %}up{% elif s.change_pct < 0 %}down{% else %}flat{% endif %}">
                 {{ "%.2f"|format(s.price) }}
             </div>
-            <div class="price-change {% if s.change_pct > 0 %}up{% elif s.change_pct < 0 %}down{% else %}flat{% endif %}">
+        </div>
+        <div class="price-item">
+            <div class="price-label">涨幅</div>
+            <div class="price-value {% if s.change_pct > 0 %}up{% elif s.change_pct < 0 %}down{% else %}flat{% endif %}">
                 {% if s.change_pct > 0 %}+{% endif %}{{ "%.2f"|format(s.change_pct) }}%
             </div>
-            {% else %}
-            <div class="price-value flat">--</div>
-            {% endif %}
+        </div>
+        <div class="price-item">
+            <div class="price-label">量比</div>
+            <div class="price-value">{{ "%.2f"|format(s.volume_ratio) }}</div>
+        </div>
+        <div class="price-item">
+            <div class="price-label">成交额</div>
+            <div class="price-value">{{ "%.2f"|format(s.turnover/10000) }}亿</div>
         </div>
     </div>
-    {% if s.price %}
-    <div class="card-bottom">
-        <div class="metric">
-            <div class="metric-label">开盘</div>
-            <div class="metric-value">{{ "%.2f"|format(s.open) }}</div>
-        </div>
-        <div class="metric">
-            <div class="metric-label">最高</div>
-            <div class="metric-value">{{ "%.2f"|format(s.high) }}</div>
-        </div>
-        <div class="metric">
-            <div class="metric-label">最低</div>
-            <div class="metric-value">{{ "%.2f"|format(s.low) }}</div>
-        </div>
-    </div>
-    {% endif %}
-    {% if s.detail %}
-    <div class="signal-row">
-        <span class="sig sig-v4">鸭口NOW {{ s.detail.BOLL_NOW }}</span>
-        <span class="sig sig-boll">BOLL {{ s.detail.BOLL }}</span>
-        <span class="sig sig-macd">MACD {{ s.detail.MACD }}</span>
-        <span class="sig sig-obv">OBV {{ s.detail.OBV }}</span>
-        <span class="sig sig-dma">DMA {{ s.detail.DMA }}</span>
-        <span class="sig sig-amo">AMO {{ s.detail.AMO }}</span>
-        <span class="sig sig-kdj">KDJ {{ s.detail.KDJ }}</span>
+    {% if s.details %}
+    <div class="details">
+        {% for key, value in s.details.items() %}
+        <div class="detail-item">{{ key }}: {{ value }}</div>
+        {% endfor %}
     </div>
     {% endif %}
 </div>
@@ -839,14 +654,14 @@ body {
 {% else %}
 <div class="empty-state">
     <div class="icon">📊</div>
-    <p>今日暂无符合策略的股票<br>策略每个交易日收盘后自动更新</p>
+    <p>今日暂无符合策略的股票<br>策略每个交易日自动更新</p>
 </div>
 {% endif %}
 </div>
 
 <div class="footer">
-    <p>鸭口选股 V4 · 当前三周期鸭口 + 六大指标 × 三周期 · 数据来源：腾讯财经</p>
-    <p style="margin-top:4px;">每个交易日收盘后自动更新</p>
+    <p>评分制选股 V5.1 · 多指标综合评分 · 数据来源：腾讯财经</p>
+    <p style="margin-top:4px;">每个交易日自动更新 · PushPlus推送</p>
 </div>
 </body>
 </html>"""
@@ -861,22 +676,24 @@ body {
     with open(output_path, 'w', encoding='utf-8') as f:
         f.write(html)
     print(f"  页面已生成: {output_path}")
+    return html
 
 
 def save_data_json(selected_stocks, output_path):
     """保存选股结果为 JSON"""
     data = {
         'update_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-        'strategy': '鸭口选股 V4',
-        'conditions': {
-            'BOLL_NOW': '当前日线/周线/月线同时处于 BOLL 开口扩张（鸭口）状态',
-            'BOLL':     'UB↑&MID↑&LB↓ 月12期/周26期/日22期内出现',
-            'MACD':     '月12/周26(零上)/日22 金叉后DIF持续>=DEA',
-            'OBV':      'OBV>MA(OBV,20) 月/周/日',
-            'DMA':      'DIF_DMA>DIFMA 月/周',
-            'AMO':      '周52≥3x & 周26≥1.5x & 日22≥1.5x',
-            'KDJ':      'J穿K穿D三线金叉 月24/周26/日22',
+        'strategy': '评分制选股 V5.1',
+        'scoring_rules': {
+            '均线多头': 'MA5 > MA20 (+20分)',
+            'BOLL开口': '价格 > BOLL上轨 × 0.95 (+15分)',
+            'MACD强势': 'DIF > 0 (+15分)',
+            '涨幅条件': '2% ≤ 涨幅 ≤ 8% (+15分)',
+            '量能放大': '量比 > 1.5 (+10分)',
+            '成交活跃': '成交额 > 1亿 (+10分)',
+            'MACD金叉': 'MACD柱 > 0 (+15分)',
         },
+        'threshold': 50,
         'count': len(selected_stocks),
         'stocks': selected_stocks,
     }
@@ -886,20 +703,84 @@ def save_data_json(selected_stocks, output_path):
     print(f"  数据已保存: {output_path}")
 
 
+def generate_push_content(selected_stocks):
+    """生成PushPlus推送内容（HTML格式）"""
+    if not selected_stocks:
+        return """
+        <h2>📊 评分制选股 V5.1</h2>
+        <p>今日暂无符合策略的股票（≥50分）</p>
+        <p><small>更新时间：{}</small></p>
+        """.format(datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+    
+    # 只推送前10只股票
+    top_stocks = selected_stocks[:10]
+    
+    content = f"""
+    <h2>📊 评分制选股 V5.1</h2>
+    <p><strong>共选出 {len(selected_stocks)} 只股票（≥50分）</strong></p>
+    <p><small>更新时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</small></p>
+    <hr>
+    <h3>🏆 Top 10 高分股票</h3>
+    <table border="1" cellpadding="8" cellspacing="0" style="border-collapse:collapse; width:100%;">
+        <tr style="background:#f0f0f0;">
+            <th>排名</th>
+            <th>代码</th>
+            <th>名称</th>
+            <th>得分</th>
+            <th>现价</th>
+            <th>涨幅</th>
+        </tr>
+    """
+    
+    for idx, stock in enumerate(top_stocks, 1):
+        color = '#ff4444' if stock['change_pct'] > 0 else '#00aa00' if stock['change_pct'] < 0 else '#666666'
+        content += f"""
+        <tr>
+            <td style="text-align:center;">{idx}</td>
+            <td style="text-align:center; font-family:monospace;">{stock['code']}</td>
+            <td>{stock['name']}</td>
+            <td style="text-align:center; font-weight:bold; color:#ff6600;">{stock['score']}分</td>
+            <td style="text-align:right; font-family:monospace;">{stock['price']:.2f}</td>
+            <td style="text-align:right; font-family:monospace; color:{color};">
+                {'+' if stock['change_pct'] > 0 else ''}{stock['change_pct']:.2f}%
+            </td>
+        </tr>
+        """
+    
+    content += """
+    </table>
+    <hr>
+    <p><small>评分标准：均线多头+20 | BOLL开口+15 | MACD强势+15 | 涨幅适中+15 | 量能放大+10 | 成交活跃+10 | MACD金叉+15</small></p>
+    <p><small>⚠️ 本推送仅为策略筛选结果，不构成投资建议</small></p>
+    """
+    
+    return content
+
+
 if __name__ == '__main__':
     output_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'docs')
     os.makedirs(output_dir, exist_ok=True)
 
+    # 运行策略
     results = run_strategy()
 
+    # 生成HTML
     html_path = os.path.join(output_dir, 'index.html')
-    generate_html(results, html_path)
+    html_content = generate_html(results, html_path)
 
+    # 保存JSON
     json_path = os.path.join(output_dir, 'data.json')
     save_data_json(results, json_path)
 
+    # PushPlus推送
+    print(f"\n[5/5] 发送PushPlus推送...")
+    push_content = generate_push_content(results)
+    push_title = f"📊 评分制选股V5.1 - 选出{len(results)}只股票"
+    send_pushplus(push_title, push_content, template='html')
+
     print(f"\n{'=' * 60}")
-    print(f"  完成! 共选出 {len(results)} 只股票")
+    print(f"  完成! 共选出 {len(results)} 只股票（≥50分）")
     print(f"  HTML: {html_path}")
     print(f"  JSON: {json_path}")
+    print(f"  PushPlus推送已发送")
     print(f"{'=' * 60}")
